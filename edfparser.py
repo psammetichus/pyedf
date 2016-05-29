@@ -7,7 +7,7 @@ class EDFEEG:
   sigdata = None
   signals = None
   def samp_rate(self, chan_N):
-    return self.sig[chan_N].nsamp / self.header.dur
+    return self.sigdata[chan_N].nsamp / self.header.dur
   def labels(self):
     return [i.label for i in self.sigdata]
 
@@ -135,11 +135,15 @@ def parsesighdrs(bb, i):
     field('prefilt',  (16+80+8+8+8+8+8), 80, 'lstr'),
     field('nsamp',  (16+80+8+8+8+8+8+80), 8, 'int') ]
 
+  k=0
   for fld in offsets:
+    print('field is : {}'.format(fld.lbl))
     for j in range(i):
-      setattr(jj[j], fld.fieldlabel, 
-            fld.postprocess(
-              getit(bb, fld.offset, fld.length)))
+      a = getit(bb, k+j*fld.length + fld.off, fld.length)
+      print('raw stuff : {}'.format(a))
+      setattr(jj[j], fld.lbl, fld.postprocess(a))
+    k += (i-1)*fld.length
+
 
   return jj
 
@@ -175,7 +179,7 @@ def parsesignals(bb, ss):
       m = k + nsamps[j]*2
       print("buffer size is : {}".format(buffers[j].size))#printdebug
       print ("index difference is : {}".format(m-k))#printdebug
-      aa = np.frombuffer(bb[k:m], dtype=np.int16)
+      aa = np.frombuffer(bb[k:m], dtype='>i2')
       print("Actual retrieved buf size : {}".format(aa.size))#printdebug
       buffers[j] = aa
       storeit(sigs, offsets, j, tx_by_sig(buffers[j], ss.sigdata, j), nsamps[j])
