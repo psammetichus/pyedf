@@ -8,6 +8,10 @@ class EDFEEG:
   signals = None
   def samp_rate(self, chan_N):
     return self.sig[chan_N].nsamp / self.header.dur
+  def labels(self):
+    return [i.label for i in self.sigdata]
+
+
 
 def edfparse(filename, edfsubtype="default"):
   eegrawf = io.open(filename, 'rb')
@@ -23,6 +27,7 @@ def edfparse(filename, edfsubtype="default"):
   eegstuff.data = parsesignals(beeg.read(-1), eegstuff)
 
   beeg.close()
+  return eegstuff
 
 class Header:
   def __init__(self):
@@ -52,7 +57,7 @@ def parseHdr(bb, parsestyle):
         "%d.%m.%y%H.%M.%S")
   h.hdrbytes = int(bb[184:192])
   h.ndr = int(bb[236:244])
-  h.dur = int(bb[244:252])
+  h.dur = float(bb[244:252])
   h.ns = int(bb[252:256])
   return h
 
@@ -98,34 +103,50 @@ class ChannelInfo:
   prefilt = ""
   nsamp = -1 # per data record
 
+class field:
+  def __init__(self, fieldlabel, offset, length, post):
+    self.lbl = fieldlabel
+    self.off = offset
+    self.length = length
+    self.post = post
+  
+  def postprocess(self, bytesvalue):
+    if self.post == 'float':
+      return float(bytesvalue.rstrip())
+    elif self.post == 'int':
+      return int(bytesvalue.rstrip())
+    elif self.post == "str":
+      return bytesvalue.rstrip().decode()
+    elif self.post == 'lstr':
+      return bytesvalue.decode()
+
 
 def parsesighdrs(bb, i):
-  lbloff = 0
-  troff = i*16
-  phdimoff = i*(16+80)
-  phminoff = i*(16+80+8)
-  phmaxoff = i*(16+80+8+8)
-  digminoff = i*(16+80+8+8+8)
-  digmaxoff = i*(16+80+8+8+8+8)
-  prefoff =  i*(16+80+8+8+8+8+8)
-  nsampoff =  i*(16+80+8+8+8+8+8+80)
   jj = [ChannelInfo() for i in range(i)]
-  for j in range(i):
-    jj[j].label = getit(bb, lbloff, 8).rstrip().decode()
-    jj[j].trans_type = getit(bb, troff, 80).decode()
-    jj[j].ph_dim = getit(bb, phdimoff, 8).rstrip().decode()
-    jj[j].ph_min = float(getit(bb, phminoff, 8).rstrip())
-    jj[j].ph_max = float(getit(bb, phmaxoff, 8).rstrip())
-    jj[j].dig_min = int(getit(bb, digminoff, 8).rstrip())
-    jj[j].dig_max = int(getit(bb, digmaxoff, 8).rstrip())
-    jj[j].prefilt = getit(bb, prefoff, 80).decode()
-    jj[j].nsamp = int(getit(bb, nsampoff, 8).rstrip())
+
+  offsets = [ 
+    field('label', 0, 16, 'str'),
+    field('trans_type', 16, 80, 'lstr'),
+    field('ph_dim', (16+80), 8, 'str'),
+    field('ph_min', (16+80+8), 8, 'float'),
+    field('ph_max', (16+80+8+8), 8, 'float'),
+    field('dig_min', (16+80+8+8+8), 8, 'int'),
+    field('dig_max', (16+80+8+8+8+8), 8, 'int'),
+    field('prefilt',  (16+80+8+8+8+8+8), 80, 'lstr'),
+    field('nsamp',  (16+80+8+8+8+8+8+80), 8, 'int') ]
+
+  for fld in offsets:
+    for j in range(i):
+      setattr(jj[j], fld.fieldlabel, 
+            fld.postprocess(
+              getit(bb, fld.offset, fld.length)))
 
   return jj
-    
 
-def storeit(sig, off, i, k):
-  sig[i,off[i]] = k
+
+
+def storeit(sig, off, i, k, n):
+    sig[i,off[i]:off[i]+n] = k
 
 def transform(qty, dmin, dmax, phmin, phmax):
     qq = (qty-dmin)/float(dmax-dmin)
@@ -146,11 +167,18 @@ def parsesignals(bb, ss):
   #loop over drecs
   for i in range(ss.header.ndr):
     k = i*drecsize
+    print("k is : {}".format(k))#printdebug
+    print("drec number is : {0} out of {1}".format(i, ss.header.ndr))#printdebug
     #loop over sig chunks in a drec
     for j in range(ns):
-      m = i*drecsize + nsamps[j]*2
-      buffers[j] = np.frombuffer(bb[k:m+1], dtype=np.int16)
-      storeit(sigs, offsets, j, tx_by_sig(buffers[j], ss.sigdata, j))
+      print("j is : {}".format(j))#printdebug
+      m = k + nsamps[j]*2
+      print("buffer size is : {}".format(buffers[j].size))#printdebug
+      print ("index difference is : {}".format(m-k))#printdebug
+      aa = np.frombuffer(bb[k:m], dtype=np.int16)
+      print("Actual retrieved buf size : {}".format(aa.size))#printdebug
+      buffers[j] = aa
+      storeit(sigs, offsets, j, tx_by_sig(buffers[j], ss.sigdata, j), nsamps[j])
       offsets[j] = nsamps[j]
       k = m
   return sigs
