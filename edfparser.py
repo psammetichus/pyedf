@@ -4,32 +4,35 @@ import numpy as np
 
 class EDFEEG:
   header = None
-  sigdata = None
+  siginfo = None
   signals = None
   def samp_rate(self, chan_N):
-    return self.sigdata[chan_N].nsamp / self.header.dur
+    return self.siginfo[chan_N].nsamp / self.header.dur
   def labels(self):
-    return [i.label for i in self.sigdata]
+    return [i.label for i in self.siginfo]
 
 
+class field:
 
-def edfparse(filename, edfsubtype="default"):
-  eegrawf = io.open(filename, 'rb')
-  beeg = io.BufferedReader(eegrawf)
+  def __init__(self, fieldlabel, offset, length, post):
+    self.lbl = fieldlabel
+    self.off = offset
+    self.length = length
+    self.post = post
+  
+  def postprocess(self, bytesvalue):
+    if self.post == 'float':
+      return float(bytesvalue.rstrip())
+    elif self.post == 'int':
+      return int(bytesvalue.rstrip())
+    elif self.post == "str":
+      return bytesvalue.rstrip().decode()
+    elif self.post == 'lstr':
+      return bytesvalue.decode()
 
-  eegstuff = EDFEEG()
-  eegstuff.header = parseHdr(beeg.read(256), edfsubtype)
-  eegstuff.sigdata = parsesighdrs(
-                beeg.read(eegstuff.header.hdrbytes-256),
-                eegstuff.header.ns)
-
-  beeg.seek(eegstuff.header.hdrbytes)
-  eegstuff.data = parsesignals(beeg.read(-1), eegstuff)
-
-  beeg.close()
-  return eegstuff
 
 class Header:
+
   def __init__(self):
     self.version = None 
     self.demo=None
@@ -41,6 +44,43 @@ class Header:
     self.ns = None
     self.other = None
 
+
+def class Demographics:
+
+  def __init__(self):
+    self.name = None
+    self.sex = None
+    self.dob = None
+    self.mrn = None
+
+
+class ChannelInfo:
+  label = ""
+  trans_type = ""
+  ph_dim = ""
+  ph_min = None
+  ph_max = None
+  dig_min = None
+  dig_max = None
+  prefilt = ""
+  nsamp = -1 # per data record
+
+
+def edfparse(filename, edftype="default"):
+  eegrawf = io.open(filename, 'rb')
+  beeg = io.BufferedReader(eegrawf)
+
+  eegstuff = EDFEEG()
+  eegstuff.header = parseHdr(beeg.read(256), edfsubtype)
+  eegstuff.siginfo = parsesighdrs(
+                beeg.read(eegstuff.header.hdrbytes-256),
+                eegstuff.header.ns)
+
+  beeg.seek(eegstuff.header.hdrbytes)
+  eegstuff.data = parsesignals(beeg.read(-1), eegstuff)
+
+  beeg.close()
+  return eegstuff
 
 
 def parseHdr(bb, parsestyle):
@@ -61,13 +101,6 @@ def parseHdr(bb, parsestyle):
   h.ns = int(bb[252:256])
   return h
 
-class Demographics:
-  def __init__(self):
-    self.name = None
-    self.sex = None
-    self.dob = None
-    self.mrn = None
-
 
 def parseptinfo(bb):
   [mrn, sex, bday, name, *rest] = bb.split(b" ")
@@ -80,6 +113,7 @@ def parseptinfo(bb):
   d.mrn = mrn.decode()
   return d
 
+
 def parserecinfo(bb):
   [stmark, stdate, eegnum, techcode, equipcode, *rest] = bb.split(b" ")
   recdate = dt.datetime.strptime(stdate.decode(), "%d-%b-%Y").date()
@@ -91,34 +125,6 @@ def parserecinfo(bb):
 
 def getit(x, a, b):
   return x[a:a+b]
-
-class ChannelInfo:
-  label = ""
-  trans_type = ""
-  ph_dim = ""
-  ph_min = None
-  ph_max = None
-  dig_min = None
-  dig_max = None
-  prefilt = ""
-  nsamp = -1 # per data record
-
-class field:
-  def __init__(self, fieldlabel, offset, length, post):
-    self.lbl = fieldlabel
-    self.off = offset
-    self.length = length
-    self.post = post
-  
-  def postprocess(self, bytesvalue):
-    if self.post == 'float':
-      return float(bytesvalue.rstrip())
-    elif self.post == 'int':
-      return int(bytesvalue.rstrip())
-    elif self.post == "str":
-      return bytesvalue.rstrip().decode()
-    elif self.post == 'lstr':
-      return bytesvalue.decode()
 
 
 def parsesighdrs(bb, i):
@@ -134,35 +140,31 @@ def parsesighdrs(bb, i):
     field('dig_max', (16+80+8+8+8+8), 8, 'int'),
     field('prefilt',  (16+80+8+8+8+8+8), 80, 'lstr'),
     field('nsamp',  (16+80+8+8+8+8+8+80), 8, 'int') ]
-
-  k=0
   for fld in offsets:
-    print('field is : {}'.format(fld.lbl))
     for j in range(i):
       a = getit(bb, k+j*fld.length + fld.off, fld.length)
-      print('raw stuff : {}'.format(a))
       setattr(jj[j], fld.lbl, fld.postprocess(a))
     k += (i-1)*fld.length
-
-
   return jj
-
 
 
 def storeit(sig, off, i, k, n):
     sig[i,off[i]:off[i]+n] = k
 
+
 def transform(qty, dmin, dmax, phmin, phmax):
     qq = (qty-dmin)/float(dmax-dmin)
     return qq*(phmax-phmin)+phmin
 
-def tx_by_sig(qty, sigdata, i):
-    return transform(qty, sigdata[i].dig_min, sigdata[i].dig_max,
-                            sigdata[i].ph_min, sigdata[i].ph_max)
+
+def tx_by_sig(qty, siginfo, i):
+    return transform(qty, siginfo[i].dig_min, siginfo[i].dig_max,
+                            siginfo[i].ph_min, siginfo[i].ph_max)
+
 
 def parsesignals(bb, ss):
   ns = ss.header.ns
-  nsamps = [ss.sigdata[k].nsamp for k in range(ns)]
+  nsamps = [ss.siginfo[k].nsamp for k in range(ns)]
   sigs = np.zeros( (ns, max(nsamps)*ss.header.ndr), dtype=np.float)
   drecsize = sum(nsamps)
   offsets = [0 for i in range(ns)]
@@ -171,19 +173,12 @@ def parsesignals(bb, ss):
   #loop over drecs
   for i in range(ss.header.ndr):
     k = i*drecsize
-    print("k is : {}".format(k))#printdebug
-    print("drec number is : {0} out of {1}".format(i, ss.header.ndr))#printdebug
     #loop over sig chunks in a drec
     for j in range(ns):
-      print("j is : {}".format(j))#printdebug
       m = k + nsamps[j]*2
-      print("buffer size is : {}".format(buffers[j].size))#printdebug
-      print ("index difference is : {}".format(m-k))#printdebug
-      aa = np.frombuffer(bb[k:m], dtype='>i2')
-      print("Actual retrieved buf size : {}".format(aa.size))#printdebug
-      buffers[j] = aa
-      storeit(sigs, offsets, j, tx_by_sig(buffers[j], ss.sigdata, j), nsamps[j])
-      offsets[j] = nsamps[j]
+      buffers[j] = np.frombuffer(bb[k:m], dtype='<i2')
+      storeit(sigs, offsets, j, tx_by_sig(buffers[j], ss.siginfo, j), nsamps[j])
+      offsets[j] += nsamps[j]
       k = m
   return sigs
 
