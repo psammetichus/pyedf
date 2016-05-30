@@ -45,7 +45,7 @@ class Header:
     self.other = None
 
 
-def class Demographics:
+class Demographics:
 
   def __init__(self):
     self.name = None
@@ -71,7 +71,7 @@ def edfparse(filename, edftype="default"):
   beeg = io.BufferedReader(eegrawf)
 
   eegstuff = EDFEEG()
-  eegstuff.header = parseHdr(beeg.read(256), edfsubtype)
+  eegstuff.header = parseHdr(beeg.read(256), edftype)
   eegstuff.siginfo = parsesighdrs(
                 beeg.read(eegstuff.header.hdrbytes-256),
                 eegstuff.header.ns)
@@ -140,6 +140,7 @@ def parsesighdrs(bb, i):
     field('dig_max', (16+80+8+8+8+8), 8, 'int'),
     field('prefilt',  (16+80+8+8+8+8+8), 80, 'lstr'),
     field('nsamp',  (16+80+8+8+8+8+8+80), 8, 'int') ]
+  k = 0
   for fld in offsets:
     for j in range(i):
       a = getit(bb, k+j*fld.length + fld.off, fld.length)
@@ -165,10 +166,10 @@ def tx_by_sig(qty, siginfo, i):
 def parsesignals(bb, ss):
   ns = ss.header.ns
   nsamps = [ss.siginfo[k].nsamp for k in range(ns)]
-  sigs = np.zeros( (ns, max(nsamps)*ss.header.ndr), dtype=np.float)
+  sigs = np.zeros( (ns, max(nsamps)*ss.header.ndr), dtype='<f8')
   drecsize = sum(nsamps)
   offsets = [0 for i in range(ns)]
-  buffers = [np.zeros( nsamps[i], dtype=np.int16) for i in range(ns)]
+  buffers = [np.zeros( nsamps[i], dtype='<i2') for i in range(ns)]
 
   #loop over drecs
   for i in range(ss.header.ndr):
@@ -177,6 +178,7 @@ def parsesignals(bb, ss):
     for j in range(ns):
       m = k + nsamps[j]*2
       buffers[j] = np.frombuffer(bb[k:m], dtype='<i2')
+      #storeit(sigs, offsets, j, buffers[j], nsamps[j])
       storeit(sigs, offsets, j, tx_by_sig(buffers[j], ss.siginfo, j), nsamps[j])
       offsets[j] += nsamps[j]
       k = m
