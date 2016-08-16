@@ -1,6 +1,7 @@
 import io
 import datetime as dt
 import numpy as np
+import re
 
 class EDFEEG:
   header = None
@@ -11,6 +12,22 @@ class EDFEEG:
   def labels(self):
     return [i.label for i in self.siginfo]
 
+class Annotation:
+
+  def __init__(self, onset, duration, text):
+    self.onset = onset
+    self.duration = duration
+    self.text = text
+
+def parse_annots(bb):
+   pass
+
+def parse_tal(bb):
+    time_re = re.compile('\(\+|-\)\d+\(\.\d+\)+\(\x15\d+\(\.\d+\)+\)?\x14')
+    annot_re = re.compile('\(.*\x14\)+\x00')
+    
+    
+     
 
 class field:
 
