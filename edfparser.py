@@ -4,15 +4,19 @@ import numpy as np
 import re
 
 class EDFEEG:
+  """class that encapsulates the data of an EDF file"""
   header = None
   siginfo = None
   signals = None
   def samp_rate(self, chan_N):
+    """returns the sampling rate of @chan_N"""
     return self.siginfo[chan_N].nsamp / self.header.dur
   def labels(self):
+    """returns list of labels of signals"""
     return [i.label for i in self.siginfo]
 
 class Annotation:
+  """class representing an annotation in an EDF+ file"""
 
   def __init__(self, onset, duration, text):
     self.onset = onset
@@ -30,8 +34,10 @@ def parse_tal(bb):
      
 
 class field:
+  """class representing a field in the EDF file"""
 
   def __init__(self, fieldlabel, offset, length, post):
+    """takes a label, an offset into the header, a length, and a field data type"""
     self.lbl = fieldlabel
     self.off = offset
     self.length = length
@@ -49,7 +55,7 @@ class field:
 
 
 class Header:
-
+  """header of the EDF(+) file"""
   def __init__(self):
     self.version = None 
     self.demo=None
@@ -63,7 +69,7 @@ class Header:
 
 
 class Demographics:
-
+  """demographic information"""
   def __init__(self):
     self.name = None
     self.sex = None
@@ -72,6 +78,7 @@ class Demographics:
 
 
 class ChannelInfo:
+  """metadata about each channel in an EDF(+) file"""
   label = ""
   trans_type = ""
   ph_dim = ""
@@ -84,6 +91,7 @@ class ChannelInfo:
 
 
 def edfparse(filename, edftype="default"):
+  """function to parse an EDF file (EDF+ coming soon). Takes a @filename and returns an EDFEEG object."""
   eegrawf = io.open(filename, 'rb')
   beeg = io.BufferedReader(eegrawf)
 
@@ -101,6 +109,7 @@ def edfparse(filename, edftype="default"):
 
 
 def parseHdr(bb, parsestyle):
+  """parses the header"""
   h = Header()
   h.version = int(bb[0:8].rstrip())
   if parsestyle == 'default':
@@ -120,6 +129,7 @@ def parseHdr(bb, parsestyle):
 
 
 def parseptinfo(bb):
+  """parses demographic information"""
   [mrn, sex, bday, name, *rest] = bb.split(b" ")
   dob = dt.datetime.strptime(bday.decode(), "%d-%b-%Y").date()
   lname, gname = name.split(b"_")
@@ -132,6 +142,7 @@ def parseptinfo(bb):
 
 
 def parserecinfo(bb):
+  """parses recording information"""
   [stmark, stdate, eegnum, techcode, equipcode, *rest] = bb.split(b" ")
   recdate = dt.datetime.strptime(stdate.decode(), "%d-%b-%Y").date()
   return {  "recdate" : recdate.decode(),
@@ -141,10 +152,12 @@ def parserecinfo(bb):
 
 
 def getit(x, a, b):
+  """utility function, returns x[a:a+b]"""
   return x[a:a+b]
 
 
 def parsesighdrs(bb, i):
+  """parses the header information for each signal in the file"""
   jj = [ChannelInfo() for i in range(i)]
 
   offsets = [ 
@@ -167,10 +180,12 @@ def parsesighdrs(bb, i):
 
 
 def storeit(sig, off, i, k, n):
+  """copies signal data into @sig object"""
     sig[i,off[i]:off[i]+n] = k
 
 
 def transform(qty, dmin, dmax, phmin, phmax):
+  """function to transform 2-byte integer to actual value"""
     qq = (qty-dmin)/float(dmax-dmin)
     return qq*(phmax-phmin)+phmin
 
@@ -181,6 +196,7 @@ def tx_by_sig(qty, siginfo, i):
 
 
 def parsesignals(bb, ss):
+  """function to parse signal data"""
   ns = ss.header.ns
   nsamps = [ss.siginfo[k].nsamp for k in range(ns)]
   sigs = np.zeros( (ns, max(nsamps)*ss.header.ndr), dtype='<f8')
