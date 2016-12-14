@@ -119,8 +119,11 @@ def parseHdr(bb, parsestyle):
       h.demo = ""
       h.recinfo = ""
       h.other = bb[8:168].decode()
-  h.epoch = dt.datetime.strptime(bb[168:184].decode(),
-        "%d.%m.%y%H.%M.%S")
+  try:
+    h.epoch = dt.datetime.strptime(bb[168:184].decode(),
+          "%d.%m.%y%H.%M.%S")
+  except ValueError:
+    h.epoch = bb[168:184].decode()
   h.hdrbytes = int(bb[184:192])
   h.ndr = int(bb[236:244])
   h.dur = float(bb[244:252])
@@ -131,21 +134,30 @@ def parseHdr(bb, parsestyle):
 def parseptinfo(bb):
   """parses demographic information"""
   [mrn, sex, bday, name, *rest] = bb.split(b" ")
-  dob = dt.datetime.strptime(bday.decode(), "%d-%b-%Y").date()
-  lname, gname = name.split(b"_")
+  try:
+    dob = dt.datetime.strptime(bday.decode(), "%d-%b-%Y").date()
+  except ValueError:
+    dob = bday
   d = Demographics()
-  d.name = (lname.decode(), gname.decode())
   d.sex = sex.decode()
   d.dob = dob.decode()
   d.mrn = mrn.decode()
+  try:
+    lname, gname = name.split(b"_")
+    d.name = (lname.decode(), gname.decode())
+  except ValueError:
+    d.name = name.decode()
   return d
 
 
 def parserecinfo(bb):
   """parses recording information"""
   [stmark, stdate, eegnum, techcode, equipcode, *rest] = bb.split(b" ")
-  recdate = dt.datetime.strptime(stdate.decode(), "%d-%b-%Y").date()
-  return {  "recdate" : recdate.decode(),
+  try:
+    recdate = dt.datetime.strptime(stdate.decode(), "%d-%b-%Y").date()
+  except ValueError:
+    recdate = stdate.decode()
+  return {  "recdate" : recdate,
             "eegnum"  : eegnum.decode(),
             "techcode"  : techcode.decode(),
             "equip" : equipcode.decode() }
@@ -181,18 +193,18 @@ def parsesighdrs(bb, i):
 
 def storeit(sig, off, i, k, n):
   """copies signal data into @sig object"""
-    sig[i,off[i]:off[i]+n] = k
+  sig[i,off[i]:off[i]+n] = k
 
 
 def transform(qty, dmin, dmax, phmin, phmax):
   """function to transform 2-byte integer to actual value"""
-    qq = (qty-dmin)/float(dmax-dmin)
-    return qq*(phmax-phmin)+phmin
+  qq = (qty-dmin)/float(dmax-dmin)
+  return qq*(phmax-phmin)+phmin
 
 
 def tx_by_sig(qty, siginfo, i):
-    return transform(qty, siginfo[i].dig_min, siginfo[i].dig_max,
-                            siginfo[i].ph_min, siginfo[i].ph_max)
+  return transform(qty,   siginfo[i].dig_min, siginfo[i].dig_max,
+                          siginfo[i].ph_min, siginfo[i].ph_max)
 
 
 def parsesignals(bb, ss):
