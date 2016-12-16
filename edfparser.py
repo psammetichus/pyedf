@@ -102,7 +102,7 @@ def edfparse(filename, edftype="default"):
                 eegstuff.header.ns)
 
   beeg.seek(eegstuff.header.hdrbytes)
-  eegstuff.data = parsesignals(beeg.read(-1), eegstuff)
+  eegstuff.signals = parsesignals(beeg.read(-1), eegstuff)
 
   beeg.close()
   return eegstuff
